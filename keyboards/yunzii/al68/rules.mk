@@ -1,0 +1,7 @@
+MCU_LDSCRIPT = STM32F103xB
+UART_DRIVER_REQUIRED = yes
+SRC += ../common/smart_ble.c
+VPATH += ../common
+CONSOLE_ENABLE = yes
+DEFERRED_EXEC_ENABLE = yes
+ENCODER_MAP_ENABLE = yes
