@@ -4,4 +4,5 @@ SRC += ../common/smart_ble.c
 VPATH += ../common
 CONSOLE_ENABLE = yes
 DEFERRED_EXEC_ENABLE = yes
+ENCODER_ENABLE = yes
 ENCODER_MAP_ENABLE = yes

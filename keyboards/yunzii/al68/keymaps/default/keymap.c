@@ -1,24 +1,11 @@
-/* Copyright 2022 Jacky
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
 #include QMK_KEYBOARD_H
 
 #if defined(ENCODER_MAP_ENABLE)
 const uint16_t PROGMEM encoder_map[][NUM_ENCODERS][NUM_DIRECTIONS] = {
-    [0] = { ENCODER_CCW_CW(LCTL(LGUI(KC_RIGHT)),LCTL(LGUI(KC_LEFT))) },
-    [1] = { ENCODER_CCW_CW(_______, _______) }
+    // Layer 0: Normal rotation (Desktop switching)
+    [0] = { ENCODER_CCW_CW(LCTL(LGUI(KC_LEFT)), LCTL(LGUI(KC_RIGHT))) },
+    // Layer 1: Rotation while holding the dial (Volume control)
+    [1] = { ENCODER_CCW_CW(KC_VOLD, KC_VOLU) }
 };
 #endif
 
@@ -38,7 +25,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
      * `----------------------------------------------------------------'
      */
     [0] = LAYOUT_65_ansi_blocker(
-    KC_ESC,     KC_1,       KC_2,       KC_3,       KC_4,       KC_5,       KC_6,       KC_7,       KC_8,       KC_9,       KC_0,       KC_MINS,    KC_EQL,     KC_BSPC,    KC_MUTE,
+    KC_ESC,     KC_1,       KC_2,       KC_3,       KC_4,       KC_5,       KC_6,       KC_7,       KC_8,       KC_9,       KC_0,       KC_MINS,    KC_EQL,     KC_BSPC,    LT(1, KC_MUTE),
     KC_TAB,     KC_Q,       KC_W,       KC_E,       KC_R,       KC_T,       KC_Y,       KC_U,       KC_I,       KC_O,       KC_P,       KC_LBRC,    KC_RBRC,    KC_BSLS,    KC_DELETE,
     KC_CAPS,    KC_A,       KC_S,       KC_D,       KC_F,       KC_G,       KC_H,       KC_J,       KC_K,       KC_L,       KC_SCLN,    KC_QUOT,                KC_ENT,     KC_PAGE_UP,
     KC_LSFT,    KC_Z,       KC_X,       KC_C,       KC_V,       KC_B,       KC_N,       KC_M,       KC_COMM,    KC_DOT,     KC_SLSH,    KC_RSFT,                KC_UP,      KC_PAGE_DOWN,
@@ -66,36 +53,61 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     )
 };
 
+void keyboard_post_init_user(void) {
+    // Set default RGB state: Wide Reactive and slow fade for a "premium" feel
+    rgb_matrix_mode_noeeprom(RGB_MATRIX_SOLID_REACTIVE_MULTIWIDE);
+    rgb_matrix_sethsv_noeeprom(HSV_AZURE); 
+    rgb_matrix_set_speed_noeeprom(16); // Slower fade
+    rgb_matrix_enable_noeeprom();
+}
+
 #ifdef RGB_MATRIX_ENABLE
 bool rgb_matrix_indicators_user(void) {
-    if (host_keyboard_led_state().caps_lock) {
-        rgb_matrix_set_color(25, 255, 0, 0); // Caps Lock red
+    uint8_t r = 0, g = 0, b = 0;
+    bool is_mode_active = false;
+    const uint8_t dim_val = 51; // 20% brightness
+
+    // Determine Mode Color
+    if (al68_state.current_mode == 0) {
+        // Wired: Off
+        r = 0; g = 0; b = 0;
+        is_mode_active = false;
+    } else {
+        is_mode_active = true;
+        switch (al68_state.current_mode) {
+            case 1: // BLE 1: White
+                r = dim_val; g = dim_val; b = dim_val;
+                break;
+            case 2: // BLE 2: Light Blue (Cyan-ish)
+                r = 0; g = dim_val; b = dim_val; 
+                break;
+            case 3: // BLE 3: Dark Blue
+                r = 0; g = 0; b = dim_val;
+                break;
+            case 4: // Dongle: Yellow
+                r = dim_val; g = dim_val; b = 0;
+                break;
+        }
     }
 
-    if (al68_state.current_mode != 0) { // Wireless mode
-        if (al68_state.is_pairing) {
-            // Flash 'P' key (Index 43)
-             if ((timer_read32() / 250) % 2) {
-                rgb_matrix_set_color(43, 0, 0, 255); // Blue flash
-            } else {
-                rgb_matrix_set_color(43, 0, 0, 0);
-            }
-        }
-        
-        // Mode specific background override
-        // Only override if we are in the "profile view" timeout
-        if (al68_state.profile_timer > 0) {
-            if (al68_state.current_mode == 4) {
-                 rgb_matrix_sethsv_noeeprom(HSV_GREEN);
-            } else {
-                switch(al68_state.current_mode) {
-                    case 1: rgb_matrix_sethsv_noeeprom(HSV_BLUE); break;
-                    case 2: rgb_matrix_sethsv_noeeprom(HSV_CYAN); break;
-                    case 3: rgb_matrix_sethsv_noeeprom(HSV_PURPLE); break;
-                }
-            }
+    // Pairing Blink Logic
+    if (al68_state.is_pairing && is_mode_active) {
+        if ((timer_read32() / 250) % 2) {
+            // Blink Off
+             r = 0; g = 0; b = 0;
         }
     }
+
+    // Caps Lock Override
+    if (host_keyboard_led_state().caps_lock) {
+        // Caps Lock Active: Red
+        r = dim_val; g = 0; b = 0;
+    }
+
+    // Apply to dedicated LEDs (3 and 4)
+    rgb_matrix_set_color(3, r, g, b);
+    rgb_matrix_set_color(4, r, g, b);
+
     return false;
 }
 #endif

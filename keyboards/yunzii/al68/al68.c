@@ -82,7 +82,9 @@ void housekeeping_task_kb(void) {
     }
 
     if (new_mode != al68_state.current_mode) {
+#ifdef CONSOLE_ENABLE
         uprintf("Mode Change: %d -> %d\n", al68_state.current_mode, new_mode);
+#endif
         if (new_mode == 0) {
             wireless_stop();
         } else {
