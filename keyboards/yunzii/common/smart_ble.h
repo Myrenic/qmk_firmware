@@ -8,3 +8,5 @@ void wireless_pair(uint32_t mode);
 void wireless_stop(void);
 bool is_wireless_connected(void);
 void smart_ble_task(void);
+void smart_ble_keepalive(void);
+void smart_ble_send_clear(void);

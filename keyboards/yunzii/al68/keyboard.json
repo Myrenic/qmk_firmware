@@ -14,12 +14,17 @@
     },
     "features": {
         "bootmagic": true,
-        "console": true,
+        "deferred_exec": true,
         "encoder": true,
         "extrakey": true,
         "mousekey": true,
         "nkro": true,
         "rgb_matrix": true
+    },
+    "host": {
+        "default": {
+            "nkro": true
+        }
     },
     "matrix_pins": {
         "cols": [

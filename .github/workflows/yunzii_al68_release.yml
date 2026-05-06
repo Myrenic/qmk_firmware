@@ -1,0 +1,76 @@
+name: Release YUNZII AL68 Firmware
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "al68-v*"
+
+concurrency:
+  group: yunzii-al68-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build AL68 firmware
+    runs-on: ubuntu-latest
+    container: ghcr.io/qmk/qmk_cli
+
+    steps:
+      - name: Disable safe.directory check
+        run: git config --global --add safe.directory '*'
+
+      - name: Checkout QMK Firmware
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: pip3 install -r requirements-dev.txt
+
+      - name: Deploy submodules
+        run: qmk git-submodule -f
+
+      - name: Build firmware
+        run: make yunzii/al68:default
+
+      - name: Collect firmware artifacts
+        run: |
+          mkdir -p dist
+          cp yunzii_al68_default.bin dist/
+          cp .build/yunzii_al68_default.hex dist/
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: yunzii-al68-firmware
+          path: dist/*
+
+  release:
+    name: Publish GitHub release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/al68-v')
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download firmware artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: yunzii-al68-firmware
+          path: dist
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}" --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" dist/* \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "YUNZII AL68 ${GITHUB_REF_NAME}" \
+              --notes "Automated firmware build for ${GITHUB_REF_NAME}."
+          fi
