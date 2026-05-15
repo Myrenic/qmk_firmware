@@ -4,10 +4,10 @@ permissions:
   contents: write
 
 on:
-  workflow_dispatch:
   push:
-    tags:
-      - "al68-v*"
+    branches:
+    - master
+    - develop
 
 concurrency:
   group: yunzii-al68-release-${{ github.ref }}
