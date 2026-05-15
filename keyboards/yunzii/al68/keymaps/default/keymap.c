@@ -7,6 +7,10 @@ const uint16_t PROGMEM encoder_map[][NUM_ENCODERS][NUM_DIRECTIONS] = {
 };
 #endif
 
+#define STATUS_LED_LEFT  3
+#define STATUS_LED_RIGHT 4
+#define STATUS_LED_HOLD_MS 2800
+
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     /* Layer 0: Default */
     [0] = LAYOUT_65_ansi_blocker(
@@ -32,6 +36,18 @@ void keyboard_post_init_user(void) {
 
 #ifdef RGB_MATRIX_ENABLE
 bool rgb_matrix_indicators_user(void) {
+    static uint8_t  last_mode      = 0;
+    static bool     last_connected = false;
+    static bool     last_pairing   = false;
+    static uint32_t status_timer   = 0;
+
+    if (al68_state.current_mode != last_mode || al68_state.is_connected != last_connected || al68_state.is_pairing != last_pairing) {
+        last_mode      = al68_state.current_mode;
+        last_connected = al68_state.is_connected;
+        last_pairing   = al68_state.is_pairing;
+        status_timer   = timer_read32();
+    }
+
     // Battery display mode (hold KC_BAT)
     if (al68_state.battery_showing) {
         rgb_matrix_set_color_all(0, 0, 0);
@@ -54,11 +70,11 @@ bool rgb_matrix_indicators_user(void) {
     }
 
     uint8_t r = 0, g = 0, b = 0;
-    bool is_mode_active = false;
+    bool show_status = false;
     const uint8_t dim_val = 51;
 
     if (al68_state.current_mode != 0) {
-        is_mode_active = true;
+        show_status = al68_state.is_pairing || !al68_state.is_connected || timer_elapsed32(status_timer) <= STATUS_LED_HOLD_MS;
         switch (al68_state.current_mode) {
             case 1: r = dim_val; g = dim_val; b = dim_val; break; // BLE1: White
             case 2: r = 0; g = dim_val; b = dim_val; break;       // BLE2: Cyan
@@ -67,15 +83,21 @@ bool rgb_matrix_indicators_user(void) {
         }
     }
 
+    if (!show_status) {
+        r = 0;
+        g = 0;
+        b = 0;
+    }
+
     // Pairing blink
-    if (al68_state.is_pairing && is_mode_active) {
+    if (al68_state.is_pairing && show_status) {
         if ((timer_read32() / 250) % 2) {
             r = 0; g = 0; b = 0;
         }
     }
 
     // Not connected blink (slower)
-    if (is_mode_active && !al68_state.is_connected && !al68_state.is_pairing) {
+    if (show_status && !al68_state.is_connected && !al68_state.is_pairing) {
         if ((timer_read32() / 500) % 2) {
             r = 0; g = 0; b = 0;
         }
@@ -96,8 +118,8 @@ bool rgb_matrix_indicators_user(void) {
     }
 
     // Apply to indicator LEDs (indices 3 and 4)
-    rgb_matrix_set_color(3, r, g, b);
-    rgb_matrix_set_color(4, r, g, b);
+    rgb_matrix_set_color(STATUS_LED_LEFT, r, g, b);
+    rgb_matrix_set_color(STATUS_LED_RIGHT, r, g, b);
 
     return false;
 }

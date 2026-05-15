@@ -17,6 +17,7 @@
 #define WIRELESS_NKRO_REPORT_LEN 0x12
 #define KEEPALIVE_INTERVAL_MS 8000
 #define KEEPALIVE_BYTE_COUNT 5
+#define MAX_IDLE_KEEPALIVES 15
 
 static bool wireless_connected = false;
 static uint8_t ble_led_state = 0;
@@ -39,6 +40,7 @@ static uint32_t last_send_time = 0;
 static uint32_t last_activity_time = 0;
 static uint32_t last_keepalive_time = 0;
 static uint32_t active_wireless_mode = 0;
+static uint8_t idle_keepalive_packets = 0;
 
 typedef enum {
     REPORT_NONE,
@@ -60,6 +62,11 @@ static ble_report_entry_t ble_queue[BLE_QUEUE_SIZE];
 static uint8_t ble_queue_head = 0;
 static uint8_t ble_queue_tail = 0;
 
+static void smart_ble_note_wireless_activity(void) {
+    last_keepalive_time   = timer_read32();
+    idle_keepalive_packets = 0;
+}
+
 static void ble_queue_push(report_type_t type, const void *data, uint8_t len) {
     uint8_t next = (ble_queue_head + 1) % BLE_QUEUE_SIZE;
     if (next == ble_queue_tail) {
@@ -70,6 +77,7 @@ static void ble_queue_push(report_type_t type, const void *data, uint8_t len) {
     ble_queue[ble_queue_head].len = (len > sizeof(ble_queue[0].data)) ? sizeof(ble_queue[0].data) : len;
     memcpy(ble_queue[ble_queue_head].data, data, ble_queue[ble_queue_head].len);
     ble_queue_head = next;
+    smart_ble_note_wireless_activity();
 }
 
 void smart_ble_task(void) {
@@ -113,6 +121,11 @@ void smart_ble_task(void) {
                     switch (cmd) {
                         case 0:
                             wireless_connected = (data == 0);
+                            if (wireless_connected) {
+                                smart_ble_note_wireless_activity();
+                            } else {
+                                idle_keepalive_packets = 0;
+                            }
                             break;
                         case 1:
                             ble_led_state = data;
@@ -131,8 +144,9 @@ void smart_ble_task(void) {
     }
 
     // 2. Keepalive: prevent wireless MCU from sleeping
-    if (wireless_connected && timer_elapsed32(last_keepalive_time) >= KEEPALIVE_INTERVAL_MS) {
+    if (wireless_connected && idle_keepalive_packets < MAX_IDLE_KEEPALIVES && timer_elapsed32(last_keepalive_time) >= KEEPALIVE_INTERVAL_MS) {
         last_keepalive_time = timer_read32();
+        idle_keepalive_packets++;
         for (int i = 0; i < KEEPALIVE_BYTE_COUNT; i++) {
             uart_write(0x00);
         }
@@ -216,6 +230,8 @@ void smart_ble_startup(void) {
     clear_keyboard();
     ble_queue_head = 0;
     ble_queue_tail = 0;
+    idle_keepalive_packets = 0;
+    last_keepalive_time = timer_read32();
     last_host_driver = host_get_driver();
     host_set_driver(&sc_ble_driver);
 }
@@ -227,6 +243,7 @@ void smart_ble_disconnect(void) {
     wireless_connected = false;
     ble_queue_head = 0;
     ble_queue_tail = 0;
+    idle_keepalive_packets = 0;
 }
 
 void sc_ble_battery(uint8_t batt_level) {
@@ -258,6 +275,7 @@ void wireless_start(uint32_t mode) {
     wireless_connected = false;
     last_activity_time = timer_read32();
     last_keepalive_time = timer_read32();
+    idle_keepalive_packets = 0;
     if (mode < 1 || mode > 4) mode = 1;
     active_wireless_mode = mode;
     for (int i = 0; i < WIRELESS_MODULE_WAKE_UP_BYTES_NUM; i++) uart_write(0x00);
@@ -281,6 +299,7 @@ void wireless_stop(void) {
     uint8_t ble_command[4];
     wireless_connected = false;
     active_wireless_mode = 0;
+    idle_keepalive_packets = 0;
     for (int i = 0; i < WIRELESS_MODULE_WAKE_UP_BYTES_NUM; i++) uart_write(0x00);
     wait_ms(100);
     smart_ble_disconnect();
